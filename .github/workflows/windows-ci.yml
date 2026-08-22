@@ -1,0 +1,83 @@
+name: Windows CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore solution
+        run: dotnet restore DS4WindowsWPF.sln
+
+      - name: Build WPF app (Release|x64)
+        run: dotnet build DS4Windows/DS4WinWPF.csproj -c Release -r win-x64 -p:Platform=x64 --no-restore
+
+      - name: Build tests (Release|x64)
+        run: dotnet build DS4WindowsTests/DS4WindowsTests.csproj -c Release -p:Platform=x64 --no-restore
+
+      - name: Run tests
+        run: dotnet test DS4WindowsTests/DS4WindowsTests.csproj -c Release -p:Platform=x64 --no-build --logger "trx;LogFileName=test_results.trx"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results
+          path: '**/test_results.trx'
+
+      - name: Publish WPF app (for smoke/artifact)
+        run: |
+          dotnet publish DS4Windows/DS4WinWPF.csproj -c Release -r win-x64 -p:Platform=x64 -o "$env:GITHUB_WORKSPACE\\artifacts\\app" --no-build
+        shell: pwsh
+
+      - name: Verify published executable exists
+        shell: pwsh
+        run: |
+          $exe = Join-Path "$env:GITHUB_WORKSPACE" "artifacts\\app\\DS4Windows.exe"
+          if (Test-Path $exe) {
+            Write-Host "Found executable: $exe"
+          } else {
+            Write-Host "Executable not found in publish output. Listing artifacts/app"
+            Get-ChildItem -Recurse "$env:GITHUB_WORKSPACE\\artifacts\\app" | ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+
+      - name: Smoke launch published app
+        shell: pwsh
+        run: |
+          $exe = Join-Path "$env:GITHUB_WORKSPACE" "artifacts\\app\\DS4Windows.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "-stop" -PassThru
+          try {
+            if (-not $process.WaitForExit(15000)) {
+              Write-Host "Application started and remained alive during the smoke window."
+              Stop-Process -Id $process.Id -Force
+            } else {
+              Write-Host "Application exited with code $($process.ExitCode)."
+              if ($process.ExitCode -ne 0) {
+                exit $process.ExitCode
+              }
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-artifacts
+          path: artifacts/
