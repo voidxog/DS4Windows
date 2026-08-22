@@ -1,0 +1,84 @@
+name: Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v3.4.0)"
+        required: true
+        type: string
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore solution
+        run: dotnet restore DS4WindowsWPF.sln
+
+      - name: Build solution (Release|x64)
+        run: dotnet build DS4WindowsWPF.sln -c Release -r win-x64 -p:Platform=x64 --no-restore
+
+      - name: Run tests
+        run: |
+          dotnet test DS4WindowsTests/DS4WindowsTests.csproj `
+            -c Release `
+            --no-build `
+            --logger "trx;LogFileName=test_results.trx"
+
+      - name: Publish WPF app
+        shell: pwsh
+        run: |
+          dotnet publish DS4Windows/DS4WinWPF.csproj `
+            -c Release `
+            -r win-x64 `
+            -p:Platform=x64 `
+            -o "$env:GITHUB_WORKSPACE\artifacts\app" `
+            --no-build
+
+      - name: Verify published executable exists
+        shell: pwsh
+        run: |
+          $exe = Join-Path "$env:GITHUB_WORKSPACE" "artifacts\app\DS4Windows.exe"
+
+          if (Test-Path $exe) {
+            Write-Host "Found executable: $exe"
+          } else {
+            Write-Host "Executable not found in publish output."
+            Get-ChildItem -Recurse "$env:GITHUB_WORKSPACE\artifacts\app" |
+              ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+
+      - name: Create release ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "$env:GITHUB_WORKSPACE\artifacts\app\*" `
+            -DestinationPath "$env:GITHUB_WORKSPACE\DS4Windows-${{ inputs.version }}-win-x64.zip"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/test_results.trx"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: DS4Windows ${{ inputs.version }}
+          generate_release_notes: true
+          files: |
+            DS4Windows-${{ inputs.version }}-win-x64.zip
