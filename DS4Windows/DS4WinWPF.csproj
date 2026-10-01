@@ -75,7 +75,7 @@
     <PackageReference Include="DotNetProjects.Extended.Wpf.Toolkit" Version="5.0.129" />
     <PackageReference Include="H.NotifyIcon.Wpf" Version="2.4.1" />
     <PackageReference Include="MdXaml" Version="1.27.0" />
-    <PackageReference Include="NLog" Version="6.2.0" />
+    <PackageReference Include="NLog" Version="6.2.1" />
     <!--<PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.230" />-->
     <PackageReference Include="Ookii.Dialogs.Wpf" Version="5.0.1" />
     <PackageReference Include="System.Management" Version="10.0.11" />
